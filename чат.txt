@@ -1,0 +1,526 @@
+//server
+
+import java.io.*;
+
+import java.net.*;
+
+import java.util.*;
+
+class Connection implements Runnable{
+
+int number;
+
+Socket client;
+
+int port;
+
+ObjectOutputStream out;
+
+ObjectInputStream in;
+
+Thread t;
+
+Messager sms;
+
+Connection(Socket c,int k){
+
+number=k;
+
+client=c;
+
+try{
+
+out=new ObjectOutputStream(client.getOutputStream());
+
+}catch(IOException y){
+
+y.printStackTrace();
+
+}
+
+port=client.getPort();
+
+t=new Thread(this,"Connection");
+
+t.start();
+
+}
+
+public void run(){
+
+try{
+
+Server.GetHistory(this);
+
+}catch(IOException e){
+
+e.printStackTrace();
+
+}
+
+try{
+
+in=new ObjectInputStream(client.getInputStream());
+
+for(int i=0;;i++){
+
+if((i==0)&&(!(Server.checkNumConnections()))) {
+
+Server.error(this);
+
+break;
+
+}
+
+sms=(Messager) in.readObject();
+
+if( (i==0)&&(!(Server.config.checkPassword(sms))) )
+
+{
+
+Server.oops(this);
+
+break;
+
+}
+
+if( sms.line.equals("end") ){
+
+break;
+
+}
+
+sms.getDate(Calendar.getInstance());
+
+System.out.println(sms);
+
+Server.SendMessage(sms,port);
+
+}
+
+}
+
+catch(Exception e){
+
+e.printStackTrace();
+
+}
+
+finally{
+
+Server.clearSp(this);
+
+}
+
+}
+
+}
+
+class Config{
+
+Properties one;
+
+int port;
+
+int history;
+
+int user_num;
+
+Config(){
+
+one=new Properties();
+
+FileInputStream fin;
+
+try{
+
+fin=new FileInputStream("Config.xml");
+
+one.loadFromXML(fin);
+
+}catch(IOException u){
+
+u.printStackTrace();
+
+}
+
+port = Integer.parseInt(one.getProperty("port"));
+
+history=Integer.parseInt(one.getProperty("history_num"));
+
+user_num=Integer.parseInt(one.getProperty("user_num"));
+
+}
+
+boolean checkPassword(Messager sms){
+
+String s1=sms.name+"_"+sms.password;
+
+String s2;
+
+for(int i=1;i<=user_num;i++){
+
+s2=one.getProperty(i+"user:name:password");
+
+if( s2.equals(s1) ){
+
+return true;
+
+}
+
+}
+
+return false;
+
+}
+
+}
+
+public class Server{
+
+public static Config config= new Config();
+
+static Messager history[]=new Messager[config.history];
+
+static int ptr=0;
+
+static int counter=0;
+
+static ArrayList<Connection> al=new ArrayList<Connection>();
+
+static int user_num=config.user_num;
+
+public static void main(String[] args)throws Exception{
+
+ServerSocket server= new ServerSocket(config.port);
+
+for(;;){
+
+Socket client_n=server.accept( );
+
+Connection connect=new Connection(client_n,counter);
+
+al.add(connect);
+
+counter++;
+
+}
+
+}
+
+public static void clearSp(Connection conect){
+
+al.remove(conect);
+
+System.out.println("There are"+al.size()+"connections");
+
+}
+
+static boolean checkNumConnections(){
+
+if(al.size()<=user_num){
+
+return true;
+
+}
+
+else{
+
+return false;
+
+}
+
+}
+
+static void error(Connection conect)throws IOException{
+
+Messager sms=new Messager("Sorry, but your can't connect now((((Try it later.");
+
+sms.getDate(Calendar.getInstance());
+
+for(int i=0;i<al.size();i++){
+
+Connection m=al.get(i);
+
+if(m.port==conect.port){
+
+conect.out.writeObject(sms);
+
+conect.out.flush();
+
+}
+
+}
+
+}
+
+static void oops(Connection conect)throws IOException{
+
+Messager sms=new Messager("Sorry, but your name or password are wrong(((");
+
+sms.getDate(Calendar.getInstance());
+
+for(int i=0;i<al.size();i++){
+
+Connection m=al.get(i);
+
+if(m.port==conect.port){
+
+conect.out.writeObject(sms);
+
+conect.out.flush();
+
+}
+
+}
+
+}
+
+public static void SendMessage(Messager sms,int Port) throws IOException{
+
+MakeHistory(sms);
+
+for(int i=0;i<al.size();i++){
+
+Connection m=al.get(i);
+
+if(m.port!=Port){
+
+m.out.writeObject(sms);
+
+m.out.flush();
+
+}
+
+else if(sms.line.equals("end")){
+
+m.out.writeObject(sms);
+
+m.out.flush();
+
+}
+
+}
+
+}
+
+static void MakeHistory(Messager m){
+
+if(ptr<=(config.history-1)){
+
+history[ptr]=m;
+
+ptr++;
+
+}
+
+else if(ptr>(config.history-1)){
+
+for(int i=1;i<config.history;i++){
+
+history[i-1]=history[i];
+
+}
+
+history[9]=m;
+
+}
+
+}
+
+static public void GetHistory(Connection h) throws IOException{
+
+for(int i=0;(i<config.history)&&(history[i]!=null);i++){
+
+h.out.writeObject(history[i]);
+
+h.out.flush();
+
+}
+
+}
+
+}
+
+
+
+
+
+
+
+
+
+//client
+
+import java.net.*;
+
+import java.io.*;
+
+import java.util.*;
+
+class GetMessage implements Runnable{
+
+Socket client;
+
+Thread t;
+
+GetMessage(Socket s){
+
+t=new Thread(this,"InputStream");
+
+client=s;
+
+t.start();
+
+}
+
+public void run(){
+
+try{
+
+Messager sms;
+
+ObjectInputStream in=new ObjectInputStream(client.getInputStream());
+
+while(true){
+
+sms=(Messager) in.readObject();
+
+System.out.println(sms);
+
+if(sms.name.equals("Server")){
+
+client.close();
+
+}
+
+}
+
+}catch(Exception e){
+
+e.printStackTrace();
+
+}
+
+}
+
+}
+
+public class Client{
+
+public static void main(String[] args)throws IOException{
+
+String name=null;
+
+String password=null;
+
+InetAddress adres = InetAddress.getLocalHost();
+
+Socket client=new Socket(adres,1234);
+
+BufferedReader br= new BufferedReader(new InputStreamReader(System.in));
+
+ObjectOutputStream out=new ObjectOutputStream(client.getOutputStream());
+
+System.out.println("Please, enter your name");
+
+name=br.readLine();
+
+System.out.println("Please, enter your password");
+
+password=br.readLine();
+
+System.out.println("Have a good chat, " + name+"\n"+"If you want to finish, just print 'end' ");
+
+System.out.println("*"+"\n"+"*"+"\n"+"*");
+
+GetMessage message=new GetMessage(client);
+
+String str;
+
+for(;;){
+
+str=br.readLine();
+
+Messager sms=new Messager(name,str,adres.getAddress(),password);
+
+out.writeObject(sms);
+
+out.flush();
+
+if(str.equals("end")){
+
+break;
+
+}
+
+}
+
+client.close();
+
+}
+
+}
+
+
+
+
+
+
+
+
+
+
+//messager
+
+import java.io.*;
+
+import java.util.*;
+
+public class Messager implements Serializable{
+
+String line;
+
+String name;
+
+String password;
+
+byte [] ip;
+
+Calendar date;
+
+Messager(String name,String line,byte [] ip,String password){
+
+this.line=line;
+
+this.name=name;
+
+this.ip=ip;
+
+this.password=password;
+
+}
+
+Messager(String line){
+
+this.line=line;
+
+name="Server";
+
+}
+
+void getDate(Calendar d){
+
+this.date=d;
+
+}
+
+public String toString(){
+
+return name + ": " + line+" ["+date.get(Calendar.HOUR_OF_DAY)+":"+
+
+date.get(Calendar.MINUTE)+":"+date.get(Calendar.SECOND)+"] ";
+
+}
+
+}
