@@ -78,16 +78,10 @@ if( (i==0)&&(!(Server.config.checkPassword(sms))) )
 
 {
 
-
 break;
 
 }
 
-if( sms.line.equals("end") ){
-
-break;
-
-}
 
 sms.getDate(Calendar.getInstance());
 
